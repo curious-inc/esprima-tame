@@ -7,6 +7,7 @@ function h(){
                 gen(i)
             );
     }
+
     await{ 
             call(
                 x, 
@@ -14,6 +15,7 @@ function h(){
                 gen(i)
             );
     }
+
     await{ 
             call(
                 x, 
@@ -21,6 +23,15 @@ function h(){
                 // defer(bad), 
                 gen(i)
             );
+           call(defer(x));
     }
+
+   await{
+       call(defer(x));
+       call(defer(var y));
+       call(defer());
+   }
+
+   await{}
  
 }

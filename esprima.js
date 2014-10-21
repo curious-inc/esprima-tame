@@ -3035,34 +3035,15 @@ parseStatement: true, parseSourceElement: true */
   
     // TameJs await statement
 
-    /*
-    function parseNewExpression() {
-        var callee, args, node = new Node();
+    function parseAwaitCalls(){
 
-        expectKeyword('new');
-        callee = parseLeftHandSideExpression();
-        args = match('(') ? parseArguments() : [];
+        var calls = [];
+        
+        while(!match("}")){
+            calls.push(parseAwaitCall());
+        }
 
-        return node.finishNewExpression(callee, args);
-    }
-
-    function parseAwaitStatement(node) {
-        var body;
-
-        expectKeyword('await');
-
-        body = parseStatement();
-
-        return node.finishAwaitStatement(body);
-    }
-
-    */
-
-    function parseAwaitCalls(node){
-
-        var result = [parseAwaitCall(node)];
-
-        return(result);
+        return(calls);
 
         /*
         var callee, args, node = new Node();
@@ -3075,41 +3056,6 @@ parseStatement: true, parseSourceElement: true */
         expectKeyword('defer');
         */
     }
-
-    /*
-    function parseVariableStatement(node) {
-        var declarations;
-
-        expectKeyword('var');
-
-        declarations = parseVariableDeclarationList();
-
-        consumeSemicolon();
-
-        return node.finishVariableDeclaration(declarations, 'var');
-    }
-
-    function parseDeferStatement(){
-        var args, node = new Node();
-
-        expectKeyword('defer');
-        expect('(');
-
-        console.log("parsing defer");
-        var declared = matchKeyword('var');
-        if(declared){ 
-            expectKeyword('var');
-            console.log("parsed var declared: " + declared);
-            args = parseVariableDeclarationList();
-        }
-
-
-        expect(')');
-
-        return node.finishDeferStatement(args, declared);
-    }
-
-    */
 
     function parseDeferStatement(){
 
@@ -3143,7 +3089,7 @@ parseStatement: true, parseSourceElement: true */
         return node.finishDeferStatement(args, declared);
     }
 
-    function parseAwaitCall(node){
+    function parseAwaitCall(){
         var callee, args, node = new Node();
 
         state.allowDefer = true;
@@ -3165,7 +3111,7 @@ parseStatement: true, parseSourceElement: true */
 
         expect('{');
 
-        var calls = parseAwaitCalls(node);
+        var calls = parseAwaitCalls();
 
         expect('}');
 
