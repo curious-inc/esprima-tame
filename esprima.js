@@ -132,6 +132,8 @@ parseStatement: true, parseSourceElement: true */
         FunctionExpression: 'FunctionExpression',
         Identifier: 'Identifier',
         IfStatement: 'IfStatement',
+        AwaitStatement: 'AwaitStatement',
+        DeferStatement: 'DeferStatement',
         Literal: 'Literal',
         LabeledStatement: 'LabeledStatement',
         LogicalExpression: 'LogicalExpression',
@@ -317,7 +319,7 @@ parseStatement: true, parseSourceElement: true */
 
         switch (id.length) {
         case 2:
-            return (id === 'if') || (id === 'in') || (id === 'do');
+            return (id === 'if') || (id === 'in') || (id === 'do') 
         case 3:
             return (id === 'var') || (id === 'for') || (id === 'new') ||
                 (id === 'try') || (id === 'let');
@@ -327,7 +329,7 @@ parseStatement: true, parseSourceElement: true */
         case 5:
             return (id === 'while') || (id === 'break') || (id === 'catch') ||
                 (id === 'throw') || (id === 'const') || (id === 'yield') ||
-                (id === 'class') || (id === 'super');
+                (id === 'class') || (id === 'super') || (id === 'await') || (id === 'defer');
         case 6:
             return (id === 'return') || (id === 'typeof') || (id === 'delete') ||
                 (id === 'switch') || (id === 'export') || (id === 'import');
@@ -1755,6 +1757,38 @@ parseStatement: true, parseSourceElement: true */
             return this;
         },
 
+        /*
+        finishAwaitStatement: function (body) {
+            this.type = Syntax.AwaitStatement;
+            this.body = body;
+            this.finish();
+            return this;
+        },
+        */
+
+        finishAwaitStatement: function (calls) {
+            this.type = Syntax.AwaitStatement;
+            this.calls = calls;
+            this.finish();
+            return this;
+        },
+
+        finishAwaitCall: function (callee, args) {
+            this.type = Syntax.AwaitCall;
+            this.callee = callee;
+            this.arguments = args;
+            this.finish();
+            return this;
+        },
+
+        finishDeferStatement: function (args, declared) {
+            this.type = Syntax.DeferStatement;
+            this.args = args;
+            this.declared = declared;
+            this.finish();
+            return this;
+        },
+
         finishLabeledStatement: function (label, body) {
             this.type = Syntax.LabeledStatement;
             this.label = label;
@@ -2345,10 +2379,12 @@ parseStatement: true, parseSourceElement: true */
 
     // 11.2 Left-Hand-Side Expressions
 
-    function parseArguments() {
+    function parseArguments(noExpectParens) {
         var args = [];
 
-        expect('(');
+        if(!noExpectParens){
+            expect('(');
+        }
 
         if (!match(')')) {
             while (index < length) {
@@ -2360,7 +2396,9 @@ parseStatement: true, parseSourceElement: true */
             }
         }
 
-        expect(')');
+        if(!noExpectParens){
+            expect(')');
+        }
 
         return args;
     }
@@ -2410,7 +2448,14 @@ parseStatement: true, parseSourceElement: true */
 
         startToken = lookahead;
         state.allowIn = true;
-        expr = matchKeyword('new') ? parseNewExpression() : parsePrimaryExpression();
+        expr = null;
+        if(matchKeyword('new')){
+            expr = parseNewExpression();
+        }else if(matchKeyword('defer')){
+            expr = parseDeferStatement();
+        }else{
+            expr = parsePrimaryExpression();
+        }
 
         for (;;) {
             if (match('.')) {
@@ -2437,7 +2482,14 @@ parseStatement: true, parseSourceElement: true */
 
         startToken = lookahead;
 
-        expr = matchKeyword('new') ? parseNewExpression() : parsePrimaryExpression();
+        var expr = null;
+        if(matchKeyword('new')){
+            expr = parseNewExpression();
+        }else if(matchKeyword('defer')){
+            expr = parseDeferStatement();
+        }else{
+            expr = parsePrimaryExpression();
+        }
 
         for (;;) {
             if (match('[')) {
@@ -2980,6 +3032,145 @@ parseStatement: true, parseSourceElement: true */
 
         return node.finishIfStatement(test, consequent, alternate);
     }
+  
+    // TameJs await statement
+
+    /*
+    function parseNewExpression() {
+        var callee, args, node = new Node();
+
+        expectKeyword('new');
+        callee = parseLeftHandSideExpression();
+        args = match('(') ? parseArguments() : [];
+
+        return node.finishNewExpression(callee, args);
+    }
+
+    function parseAwaitStatement(node) {
+        var body;
+
+        expectKeyword('await');
+
+        body = parseStatement();
+
+        return node.finishAwaitStatement(body);
+    }
+
+    */
+
+    function parseAwaitCalls(node){
+
+        var result = [parseAwaitCall(node)];
+
+        return(result);
+
+        /*
+        var callee, args, node = new Node();
+
+        callee = parseLeftHandSideExpression();
+        args = match('(') ? parseArguments() : [];
+        
+        return node.finishAwaitExpression(callee, args);
+
+        expectKeyword('defer');
+        */
+    }
+
+    /*
+    function parseVariableStatement(node) {
+        var declarations;
+
+        expectKeyword('var');
+
+        declarations = parseVariableDeclarationList();
+
+        consumeSemicolon();
+
+        return node.finishVariableDeclaration(declarations, 'var');
+    }
+
+    function parseDeferStatement(){
+        var args, node = new Node();
+
+        expectKeyword('defer');
+        expect('(');
+
+        console.log("parsing defer");
+        var declared = matchKeyword('var');
+        if(declared){ 
+            expectKeyword('var');
+            console.log("parsed var declared: " + declared);
+            args = parseVariableDeclarationList();
+        }
+
+
+        expect(')');
+
+        return node.finishDeferStatement(args, declared);
+    }
+
+    */
+
+    function parseDeferStatement(){
+
+        var args, node = new Node();
+
+        expectKeyword('defer');
+
+        if(!state.allowDefer){
+            throwError({}, 'defer must only exist in await block.');
+        }
+
+        if(state.seenDefer){
+            throwError({}, 'there may only be one defer per statement in an await.');
+        }
+
+        expect('(');
+
+        var declared = matchKeyword('var');
+
+        if(declared){
+            expectKeyword('var');
+            args = parseVariableDeclarationList();
+        }else{
+            args = parseArguments(true);
+        }
+
+        expect(')');
+
+        state.seenDefer = true;
+
+        return node.finishDeferStatement(args, declared);
+    }
+
+    function parseAwaitCall(node){
+        var callee, args, node = new Node();
+
+        state.allowDefer = true;
+        state.seenDefer = false;
+
+        callee = parseLeftHandSideExpression();
+        args = parseArguments();
+        expect(';');
+
+        state.allowDefer = false;
+        
+        return node.finishAwaitCall(callee, args);
+    }
+
+    function parseAwaitStatement(node) {
+        var body;
+
+        expectKeyword('await');
+
+        expect('{');
+
+        var calls = parseAwaitCalls(node);
+
+        expect('}');
+
+        return node.finishAwaitStatement(calls);
+    }
 
     // 12.6 Iteration Statements
 
@@ -3447,6 +3638,8 @@ parseStatement: true, parseSourceElement: true */
                 return parseFunctionDeclaration(node);
             case 'if':
                 return parseIfStatement(node);
+            case 'await':
+                return parseAwaitStatement(node);
             case 'return':
                 return parseReturnStatement(node);
             case 'switch':
