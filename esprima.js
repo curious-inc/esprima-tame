@@ -309,6 +309,13 @@ parseStatement: true, parseSourceElement: true */
     // 7.6.1.1 Keywords
 
     function isKeyword(id) {
+        if (typeof extra.isKeyword === 'function') {
+            var override = extra.isKeyword(id);
+            if (typeof override === 'boolean' ||
+                    typeof override === 'string') {
+                return override;
+            }
+        }
         if (strict && isStrictModeReservedWord(id)) {
             return true;
         }
@@ -319,7 +326,7 @@ parseStatement: true, parseSourceElement: true */
 
         switch (id.length) {
         case 2:
-            return (id === 'if') || (id === 'in') || (id === 'do') 
+            return (id === 'if') || (id === 'in') || (id === 'do');
         case 3:
             return (id === 'var') || (id === 'for') || (id === 'new') ||
                 (id === 'try') || (id === 'let');
@@ -638,7 +645,7 @@ parseStatement: true, parseSourceElement: true */
     }
 
     function scanIdentifier() {
-        var start, id, type;
+        var start, id, fakeId, type;
 
         start = index;
 
@@ -650,6 +657,17 @@ parseStatement: true, parseSourceElement: true */
         if (id.length === 1) {
             type = Token.Identifier;
         } else if (isKeyword(id)) {
+            fakeId = isKeyword(id);
+            /*
+            if (typeof fakeId === 'string') {
+                if (fakeId === 'block') {
+                    lookahead = advance();
+                    lookahead.keyword = id;
+                    return lookahead;
+                }
+                id = fakeId;
+            }
+            */
             type = Token.Keyword;
         } else if (id === 'null') {
             type = Token.NullLiteral;
@@ -2382,7 +2400,7 @@ parseStatement: true, parseSourceElement: true */
     function parseArguments(noExpectParens) {
         var args = [];
 
-        if(!noExpectParens){
+        if (!noExpectParens) {
             expect('(');
         }
 
@@ -2396,7 +2414,7 @@ parseStatement: true, parseSourceElement: true */
             }
         }
 
-        if(!noExpectParens){
+        if (!noExpectParens) {
             expect(')');
         }
 
@@ -2443,17 +2461,105 @@ parseStatement: true, parseSourceElement: true */
         return node.finishNewExpression(callee, args);
     }
 
+    // TameJs await statement
+
+    function parseAwaitCall() {
+        var callee, args, node = new Node();
+
+        state.allowDefer = true;
+        state.seenDefer = false;
+
+        callee = parseLeftHandSideExpression();
+        args = parseArguments();
+        expect(';');
+
+        state.allowDefer = false;
+
+        return node.finishAwaitCall(callee, args);
+    }
+
+
+    function parseAwaitCalls() {
+
+        var calls = [];
+
+        while (!match('}')) {
+            calls.push(parseAwaitCall());
+        }
+
+        return (calls);
+
+        /*
+        var callee, args, node = new Node();
+
+        callee = parseLeftHandSideExpression();
+        args = match('(') ? parseArguments() : [];
+
+        return node.finishAwaitExpression(callee, args);
+
+        expectKeyword('defer');
+        */
+    }
+
+    function parseAwaitStatement(node) {
+        var body, calls;
+
+        expectKeyword('await');
+
+        expect('{');
+
+        calls = parseAwaitCalls();
+
+        expect('}');
+
+        return node.finishAwaitStatement(calls);
+    }
+
+    function parseDeferStatement() {
+
+        var args, declared, node = new Node();
+
+        expectKeyword('defer');
+
+        if (!state.allowDefer) {
+            throwError({}, 'defer must only exist in await block.');
+        }
+
+        if (state.seenDefer) {
+            throwError({}, 'there may only be one defer per statement in an await.');
+        }
+
+        expect('(');
+
+        declared = matchKeyword('var');
+
+        if (declared) {
+            expectKeyword('var');
+            /*global parseVariableDeclarationList*/
+            args = parseVariableDeclarationList();
+        } else {
+            args = parseArguments(true);
+        }
+
+        expect(')');
+
+        state.seenDefer = true;
+
+        return node.finishDeferStatement(args, declared);
+    }
+
+
     function parseLeftHandSideExpressionAllowCall() {
         var expr, args, property, startToken, previousAllowIn = state.allowIn;
 
         startToken = lookahead;
         state.allowIn = true;
         expr = null;
-        if(matchKeyword('new')){
+        if (matchKeyword('new')) {
             expr = parseNewExpression();
-        }else if(matchKeyword('defer')){
+        } else if (matchKeyword('defer')) {
             expr = parseDeferStatement();
-        }else{
+        } else {
             expr = parsePrimaryExpression();
         }
 
@@ -2482,12 +2588,11 @@ parseStatement: true, parseSourceElement: true */
 
         startToken = lookahead;
 
-        var expr = null;
-        if(matchKeyword('new')){
+        if (matchKeyword('new')) {
             expr = parseNewExpression();
-        }else if(matchKeyword('defer')){
+        } else if (matchKeyword('defer')) {
             expr = parseDeferStatement();
-        }else{
+        } else {
             expr = parsePrimaryExpression();
         }
 
@@ -2534,7 +2639,9 @@ parseStatement: true, parseSourceElement: true */
     // 11.4 Unary Operators
 
     function parseUnaryExpression() {
-        var token, expr, startToken;
+        var token, expr, startToken, isKeywordOverride;
+
+        isKeywordOverride = false;
 
         if (lookahead.type !== Token.Punctuator && lookahead.type !== Token.Keyword) {
             expr = parsePostfixExpression();
@@ -2557,11 +2664,12 @@ parseStatement: true, parseSourceElement: true */
             token = lex();
             expr = parseUnaryExpression();
             expr = new WrappingNode(startToken).finishUnaryExpression(token.value, expr);
-        } else if (matchKeyword('delete') || matchKeyword('void') || matchKeyword('typeof')) {
+        } else if (matchKeyword('delete') || matchKeyword('void') || matchKeyword('typeof') || (typeof extra.isKeyword === 'function' && extra.isKeyword(lookahead.value))) {
             startToken = lookahead;
             token = lex();
             expr = parseUnaryExpression();
             expr = new WrappingNode(startToken).finishUnaryExpression(token.value, expr);
+            if (typeof extra.isKeyword === 'function' && extra.isKeyword(startToken.value)) { expr.keyword = startToken.value; }
             if (strict && expr.operator === 'delete' && expr.argument.type === Syntax.Identifier) {
                 throwErrorTolerant({}, Messages.StrictDelete);
             }
@@ -3031,91 +3139,6 @@ parseStatement: true, parseSourceElement: true */
         }
 
         return node.finishIfStatement(test, consequent, alternate);
-    }
-  
-    // TameJs await statement
-
-    function parseAwaitCalls(){
-
-        var calls = [];
-        
-        while(!match("}")){
-            calls.push(parseAwaitCall());
-        }
-
-        return(calls);
-
-        /*
-        var callee, args, node = new Node();
-
-        callee = parseLeftHandSideExpression();
-        args = match('(') ? parseArguments() : [];
-        
-        return node.finishAwaitExpression(callee, args);
-
-        expectKeyword('defer');
-        */
-    }
-
-    function parseDeferStatement(){
-
-        var args, node = new Node();
-
-        expectKeyword('defer');
-
-        if(!state.allowDefer){
-            throwError({}, 'defer must only exist in await block.');
-        }
-
-        if(state.seenDefer){
-            throwError({}, 'there may only be one defer per statement in an await.');
-        }
-
-        expect('(');
-
-        var declared = matchKeyword('var');
-
-        if(declared){
-            expectKeyword('var');
-            args = parseVariableDeclarationList();
-        }else{
-            args = parseArguments(true);
-        }
-
-        expect(')');
-
-        state.seenDefer = true;
-
-        return node.finishDeferStatement(args, declared);
-    }
-
-    function parseAwaitCall(){
-        var callee, args, node = new Node();
-
-        state.allowDefer = true;
-        state.seenDefer = false;
-
-        callee = parseLeftHandSideExpression();
-        args = parseArguments();
-        expect(';');
-
-        state.allowDefer = false;
-        
-        return node.finishAwaitCall(callee, args);
-    }
-
-    function parseAwaitStatement(node) {
-        var body;
-
-        expectKeyword('await');
-
-        expect('{');
-
-        var calls = parseAwaitCalls();
-
-        expect('}');
-
-        return node.finishAwaitStatement(calls);
     }
 
     // 12.6 Iteration Statements
@@ -4076,6 +4099,8 @@ parseStatement: true, parseSourceElement: true */
             extra.range = (typeof options.range === 'boolean') && options.range;
             extra.loc = (typeof options.loc === 'boolean') && options.loc;
             extra.attachComment = (typeof options.attachComment === 'boolean') && options.attachComment;
+
+            extra.isKeyword = options.isKeyword;
 
             if (extra.loc && options.source !== null && options.source !== undefined) {
                 extra.source = toString(options.source);

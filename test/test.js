@@ -24059,6 +24059,8 @@ var testFixture = {
                 FunctionExpression: 'FunctionExpression',
                 Identifier: 'Identifier',
                 IfStatement: 'IfStatement',
+                AwaitStatement: 'AwaitStatement',
+                DeferStatement: 'DeferStatement',
                 Literal: 'Literal',
                 LabeledStatement: 'LabeledStatement',
                 LogicalExpression: 'LogicalExpression',
